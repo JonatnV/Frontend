@@ -2,7 +2,7 @@ pipeline {
     agent {
         kubernetes {
             label 'ci-frontend-kaniko'
-            defaultContainer 'kaniko'
+            defaultContainer 'jnlp'
             yaml """
 apiVersion: v1
 kind: Pod
@@ -10,7 +10,6 @@ spec:
   containers:
   - name: kaniko
     image: gcr.io/kaniko-project/executor:latest
-    args: ["--context=dir://workspace", "--dockerfile=Dockerfile", "--no-push"]
     volumeMounts:
       - name: kaniko-secret
         mountPath: /kaniko/.docker
