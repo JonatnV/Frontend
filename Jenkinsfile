@@ -1,5 +1,19 @@
 pipeline {
-    agent any
+    agent {
+        kubernetes {
+            yaml """
+apiVersion: v1
+kind: Pod
+spec:
+  containers:
+  - name: kaniko
+    image: gcr.io/kaniko-project/executor:latest
+    command:
+    - cat
+    tty: true
+"""
+        }
+    }
 
     environment {
         DOCKERHUB_CREDENTIALS = credentials('dockerhub-credentials')
@@ -17,12 +31,19 @@ pipeline {
 
         stage('Build Docker Image') {
             steps {
-                script {
-                    def imageTag = "jonatandvs/frontend:${env.BUILD_NUMBER}"
-                    sh "docker build -t ${imageTag} ."
-                    sh "docker login -u ${DOCKERHUB_CREDENTIALS_USR} -p ${DOCKERHUB_CREDENTIALS_PSW}"
-                    sh "docker push ${imageTag}"
-                    env.IMAGE_TAG = imageTag
+                container('kaniko') {
+                    script {
+                        def imageTag = "jonatandvs/frontend:${env.BUILD_NUMBER}"
+                        sh """
+                        /kaniko/executor \
+                            --dockerfile=Dockerfile \
+                            --context=dir://$WORKSPACE \
+                            --destination=jonatandvs/frontend:${env.BUILD_NUMBER} \
+                            --skip-tls-verify=true \
+                            --registry-mirror=https://index.docker.io/v1/
+                        """
+                        env.IMAGE_TAG = imageTag
+                    }
                 }
             }
         }
@@ -30,10 +51,7 @@ pipeline {
         stage('Update Helm Chart') {
             steps {
                 script {
-                    
                     sh "git clone https://github.com/JonatnV/ChartTemplate.git charts-repo"
-
-                    
                     sh """
                         yq e '.frontend.image = "jonatandvs/frontend"' -i charts-repo/charts/app/values-dev.yaml
                         yq e '.frontend.tag = "${BUILD_NUMBER}"' -i charts-repo/charts/app/values-dev.yaml
@@ -45,7 +63,6 @@ pipeline {
         stage('Package Helm Chart') {
             steps {
                 script {
-                    
                     sh "helm package charts-repo/charts/app -d charts-repo/packages"
                 }
             }
