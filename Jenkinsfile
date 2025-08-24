@@ -1,6 +1,8 @@
 pipeline {
     agent {
         kubernetes {
+            label 'ci-frontend-kaniko'
+            defaultContainer 'jnlp'
             yaml """
 apiVersion: v1
 kind: Pod
@@ -8,10 +10,13 @@ spec:
   containers:
   - name: kaniko
     image: gcr.io/kaniko-project/executor:latest
-    tty: true
+    command:
+      - /busybox/sh
+      - -c
+      - "tail -f /dev/null"
     volumeMounts:
-    - name: kaniko-secret
-      mountPath: /kaniko/.docker
+      - name: kaniko-secret
+        mountPath: /kaniko/.docker
   volumes:
   - name: kaniko-secret
     secret:
@@ -21,10 +26,10 @@ spec:
     }
 
     environment {
-        DOCKERHUB_CREDENTIALS = credentials('dockerhub-credentials')
         CHARTMUSEUM_CREDENTIALS = credentials('chartmuseum-credentials')
         CHART_REPO = 'http://10.118.0.4:32080'
         CHART_NAME = 'webapp'
+        IMAGE_NAME = 'jonatandvs/frontend'
     }
 
     stages {
@@ -34,19 +39,19 @@ spec:
             }
         }
 
-        stage('Build Docker Image') {
+        stage('Build & Push Docker Image') {
             steps {
-                container('kaniko') {
-                    script {
-                        def imageTag = "jonatandvs/frontend:${env.BUILD_NUMBER}"
+                script {
+                    def imageTag = "${IMAGE_NAME}:${BUILD_NUMBER}"
+                    env.IMAGE_TAG = imageTag
+                    container('kaniko') {
                         sh """
                         /kaniko/executor \
-                          --dockerfile=\$WORKSPACE/Dockerfile \
-                          --context=dir://\$WORKSPACE \
-                          --destination=${imageTag} \
-                          --skip-tls-verify
+                            --dockerfile=$WORKSPACE/Dockerfile \
+                            --context=dir://$WORKSPACE \
+                            --destination=${imageTag} \
+                            --skip-tls-verify
                         """
-                        env.IMAGE_TAG = imageTag
                     }
                 }
             }
@@ -54,11 +59,13 @@ spec:
 
         stage('Update Helm Chart') {
             steps {
-                sh "git clone https://github.com/JonatnV/ChartTemplate.git charts-repo"
-                sh """
-                  yq e '.frontend.image = "jonatandvs/frontend"' -i charts-repo/charts/app/values-dev.yaml
-                  yq e '.frontend.tag = "${BUILD_NUMBER}"' -i charts-repo/charts/app/values-dev.yaml
-                """
+                script {
+                    sh "git clone https://github.com/JonatnV/ChartTemplate.git charts-repo"
+                    sh """
+                        yq e '.frontend.image = "${IMAGE_NAME}"' -i charts-repo/charts/app/values-dev.yaml
+                        yq e '.frontend.tag = "${BUILD_NUMBER}"' -i charts-repo/charts/app/values-dev.yaml
+                    """
+                }
             }
         }
 
@@ -71,9 +78,9 @@ spec:
         stage('Upload to ChartMuseum') {
             steps {
                 sh """
-                  curl --user ${CHARTMUSEUM_CREDENTIALS_USR}:${CHARTMUSEUM_CREDENTIALS_PSW} \
-                  --data-binary @charts-repo/packages/webapp-0.1.0.tgz \
-                  ${CHART_REPO}/api/charts
+                    curl --user ${CHARTMUSEUM_CREDENTIALS_USR}:${CHARTMUSEUM_CREDENTIALS_PSW} \
+                    --data-binary @charts-repo/packages/${CHART_NAME}-0.1.0.tgz \
+                    ${CHART_REPO}/api/charts
                 """
             }
         }
