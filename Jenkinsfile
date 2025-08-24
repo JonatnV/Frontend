@@ -8,11 +8,14 @@ spec:
   containers:
   - name: kaniko
     image: gcr.io/kaniko-project/executor:latest
-    command:
-      - /busybox/sh
-    args:
-      - -c
-      - "sleep 99d"   # Mantener el contenedor vivo mientras Jenkins ejecuta sh
+    tty: true
+    volumeMounts:
+    - name: kaniko-secret
+      mountPath: /kaniko/.docker
+  volumes:
+  - name: kaniko-secret
+    secret:
+      secretName: regcred
 """
         }
     }
@@ -38,8 +41,8 @@ spec:
                         def imageTag = "jonatandvs/frontend:${env.BUILD_NUMBER}"
                         sh """
                         /kaniko/executor \
-                          --dockerfile=$WORKSPACE/Dockerfile \
-                          --context=dir://$WORKSPACE \
+                          --dockerfile=\$WORKSPACE/Dockerfile \
+                          --context=dir://\$WORKSPACE \
                           --destination=${imageTag} \
                           --skip-tls-verify
                         """
