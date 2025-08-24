@@ -8,6 +8,11 @@ spec:
   containers:
   - name: kaniko
     image: gcr.io/kaniko-project/executor:latest
+    command:
+      - /busybox/sh
+    args:
+      - -c
+      - "sleep 99d"   # Mantener el contenedor vivo mientras Jenkins ejecuta sh
 """
         }
     }
@@ -33,10 +38,10 @@ spec:
                         def imageTag = "jonatandvs/frontend:${env.BUILD_NUMBER}"
                         sh """
                         /kaniko/executor \
-                            --dockerfile=Dockerfile \
-                            --context=dir://$WORKSPACE \
-                            --destination=${imageTag} \
-                            --skip-tls-verify=true
+                          --dockerfile=$WORKSPACE/Dockerfile \
+                          --context=dir://$WORKSPACE \
+                          --destination=${imageTag} \
+                          --skip-tls-verify
                         """
                         env.IMAGE_TAG = imageTag
                     }
@@ -46,13 +51,11 @@ spec:
 
         stage('Update Helm Chart') {
             steps {
-                script {
-                    sh "git clone https://github.com/JonatnV/ChartTemplate.git charts-repo"
-                    sh """
-                        yq e '.frontend.image = "jonatandvs/frontend"' -i charts-repo/charts/app/values-dev.yaml
-                        yq e '.frontend.tag = "${BUILD_NUMBER}"' -i charts-repo/charts/app/values-dev.yaml
-                    """
-                }
+                sh "git clone https://github.com/JonatnV/ChartTemplate.git charts-repo"
+                sh """
+                  yq e '.frontend.image = "jonatandvs/frontend"' -i charts-repo/charts/app/values-dev.yaml
+                  yq e '.frontend.tag = "${BUILD_NUMBER}"' -i charts-repo/charts/app/values-dev.yaml
+                """
             }
         }
 
@@ -65,9 +68,9 @@ spec:
         stage('Upload to ChartMuseum') {
             steps {
                 sh """
-                    curl --user ${CHARTMUSEUM_CREDENTIALS_USR}:${CHARTMUSEUM_CREDENTIALS_PSW} \
-                    --data-binary @charts-repo/packages/webapp-0.1.0.tgz \
-                    ${CHART_REPO}/api/charts
+                  curl --user ${CHARTMUSEUM_CREDENTIALS_USR}:${CHARTMUSEUM_CREDENTIALS_PSW} \
+                  --data-binary @charts-repo/packages/webapp-0.1.0.tgz \
+                  ${CHART_REPO}/api/charts
                 """
             }
         }
