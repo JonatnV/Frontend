@@ -1,78 +1,73 @@
 pipeline {
     agent {
         kubernetes {
-            label 'ci-dind'
-            defaultContainer 'jnlp'
+            label 'frontend-agent'
+            yaml """
+apiVersion: v1
+kind: Pod
+spec:
+  containers:
+  - name: jnlp
+    image: jenkins/inbound-agent
+    args: ['\$(JENKINS_SECRET)', '\$(JENKINS_NAME)']
+  - name: docker
+    image: docker:24-dind
+    securityContext:
+      privileged: true
+"""
         }
     }
 
     environment {
-        DOCKERHUB_CREDENTIALS = credentials('dockerhub-credentials')
-        CHARTMUSEUM_CREDENTIALS = credentials('chartmuseum-credentials')
-        CHART_REPO = 'http://10.118.0.4:32080'
-        CHART_NAME = 'webapp'
+        GITHUB_CREDENTIALS = credentials('github_credential')
+        DOCKERHUB_CREDENTIALS = credentials('dockerhub_credentials')
+        CHARTMUSEUM_CREDENTIALS = credentials('chartmuseum_credentials')
+        CHARTMUSEUM_URL = 'http://10.118.0.4:32080'  // Cambia por tu IP:puerto
     }
 
     stages {
-        stage('Checkout') {
+
+        stage('Checkout Frontend') {
             steps {
-                git branch: 'main', url: 'https://github.com/JonatnV/Frontend.git', credentialsId: 'github-credentials'
+                git branch: 'main',
+                    url: 'https://github.com/JonatnV/Frontend.git',
+                    credentialsId: 'github_credential'
             }
         }
 
-        stage('Build & Push Docker Image') {
+        stage('Build Docker Image') {
             steps {
                 container('docker') {
-                    script {
-                        def imageTag = "jonatandvs/frontend:${env.BUILD_NUMBER}"
-                        sh "docker build -t ${imageTag} ."
-                        sh "docker login -u ${DOCKERHUB_CREDENTIALS_USR} -p ${DOCKERHUB_CREDENTIALS_PSW}"
-                        sh "docker push ${imageTag}"
-                        env.IMAGE_TAG = imageTag
-                    }
-                }
-            }
-        }
-
-        stage('Update Helm Chart') {
-            steps {
-                container('docker') {
-                    script {
-                        sh "git clone https://github.com/JonatnV/ChartTemplate.git charts-repo"
-                        sh """
-                            yq e '.frontend.image = "jonatandvs/frontend"' -i charts-repo/charts/app/values-dev.yaml
-                            yq e '.frontend.tag = "${BUILD_NUMBER}"' -i charts-repo/charts/app/values-dev.yaml
-                        """
-                    }
+                    sh """
+                        docker build -t jonatanv/frontend:latest .
+                        echo \$DOCKERHUB_CREDENTIALS_PSW | docker login -u \$DOCKERHUB_CREDENTIALS_USR --password-stdin
+                        docker push jonatanv/frontend:latest
+                    """
                 }
             }
         }
 
         stage('Package Helm Chart') {
             steps {
-                container('docker') {
-                    sh "helm package charts-repo/charts/app -d charts-repo/packages"
-                }
-            }
-        }
+                // Clonar template del chart
+                git branch: 'main',
+                    url: 'https://github.com/JonatnV/ChartTemplate.git',
+                    credentialsId: 'github_credential'
 
-        stage('Upload to ChartMuseum') {
-            steps {
-                container('docker') {
-                    sh """
-                        curl --user ${CHARTMUSEUM_CREDENTIALS_USR}:${CHARTMUSEUM_CREDENTIALS_PSW} \
-                        --data-binary @charts-repo/packages/webapp-0.1.0.tgz \
-                        ${CHART_REPO}/api/charts
-                    """
-                }
-            }
-        }
+                // Actualizar values.yaml con la nueva imagen
+                sh """
+                    sed -i 's|repository: .*|repository: jonatanv/frontend|' values.yaml
+                    sed -i 's|tag: .*|tag: latest|' values.yaml
+                """
 
-        stage('Cleanup') {
-            steps {
-                container('docker') {
-                    sh "rm -rf charts-repo"
-                }
+                // Empaquetar chart
+                sh 'helm package .'
+
+                // Subir a ChartMuseum
+                sh """
+                    curl -u \$CHARTMUSEUM_CREDENTIALS_USR:\$CHARTMUSEUM_CREDENTIALS_PSW \
+                         --data-binary @frontend-0.1.0.tgz \$CHARTMUSEUM_URL/api/charts
+                """
             }
         }
     }
