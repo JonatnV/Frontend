@@ -1,30 +1,7 @@
 pipeline {
     agent {
         kubernetes {
-            yaml """
-apiVersion: v1
-kind: Pod
-spec:
-  containers:
-    - name: jnlp
-      image: jenkins/inbound-agent:latest
-      args: ['\$(JENKINS_SECRET)', '\$(JENKINS_NAME)']
-      tty: true
-    - name: docker
-      image: docker:24.0.5-dind
-      securityContext:
-        privileged: true
-      env:
-        - name: DOCKER_TLS_CERTDIR
-          value: ""
-      volumeMounts:
-        - name: docker-graph-storage
-          mountPath: /var/lib/docker
-  volumes:
-    - name: docker-graph-storage
-      emptyDir: {}
-  restartPolicy: Never
-"""
+            label 'ci-dind'
             defaultContainer 'jnlp'
         }
     }
