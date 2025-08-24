@@ -74,9 +74,7 @@ spec:
         stage('Package Helm Chart') {
             steps {
                 container('docker') {
-                    script {
-                        sh "helm package charts-repo/charts/app -d charts-repo/packages"
-                    }
+                    sh "helm package charts-repo/charts/app -d charts-repo/packages"
                 }
             }
         }
@@ -84,13 +82,11 @@ spec:
         stage('Upload to ChartMuseum') {
             steps {
                 container('docker') {
-                    script {
-                        sh """
-                            curl --user ${CHARTMUSEUM_CREDENTIALS_USR}:${CHARTMUSEUM_CREDENTIALS_PSW} \
-                            --data-binary @charts-repo/packages/webapp-0.1.0.tgz \
-                            ${CHART_REPO}/api/charts
-                        """
-                    }
+                    sh """
+                        curl --user ${CHARTMUSEUM_CREDENTIALS_USR}:${CHARTMUSEUM_CREDENTIALS_PSW} \
+                        --data-binary @charts-repo/packages/webapp-0.1.0.tgz \
+                        ${CHART_REPO}/api/charts
+                    """
                 }
             }
         }
