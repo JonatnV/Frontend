@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Frontend Strings</title>
+    <style>
+        body { font-family: Arial; padding: 20px; }
+        input, button { margin: 5px; }
+    </style>
+</head>
+<body>
+    <h1>Guardar Strings</h1>
+    <input type="text" id="inputString" placeholder="Escribe algo">
+    <button onclick="sendString()">Guardar</button>
+
+    <h2>Strings guardados</h2>
+    <ul id="stringList"></ul>
+
+    <script>
+        const API_URL = "http://localhost:8080/api/strings";
+
+        async function sendString() {
+            const value = document.getElementById('inputString').value;
+            if(!value) return alert("Escribe algo");
+
+            await fetch(API_URL, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ content: value })
+            });
+            document.getElementById('inputString').value = '';
+            loadStrings();
+        }
+
+        async function loadStrings() {
+            const res = await fetch(API_URL);
+            const data = await res.json();
+            const ul = document.getElementById('stringList');
+            ul.innerHTML = '';
+            data.forEach(s => {
+                const li = document.createElement('li');
+                li.textContent = s.content;
+                ul.appendChild(li);
+            });
+        }
+
+        loadStrings();
+    </script>
+</body>
+</html>
