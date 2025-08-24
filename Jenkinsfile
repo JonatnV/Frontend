@@ -8,9 +8,6 @@ spec:
   containers:
   - name: kaniko
     image: gcr.io/kaniko-project/executor:latest
-    command:
-    - cat
-    tty: true
 """
         }
     }
@@ -38,9 +35,8 @@ spec:
                         /kaniko/executor \
                             --dockerfile=Dockerfile \
                             --context=dir://$WORKSPACE \
-                            --destination=jonatandvs/frontend:${env.BUILD_NUMBER} \
-                            --skip-tls-verify=true \
-                            --registry-mirror=https://index.docker.io/v1/
+                            --destination=${imageTag} \
+                            --skip-tls-verify=true
                         """
                         env.IMAGE_TAG = imageTag
                     }
@@ -62,21 +58,17 @@ spec:
 
         stage('Package Helm Chart') {
             steps {
-                script {
-                    sh "helm package charts-repo/charts/app -d charts-repo/packages"
-                }
+                sh "helm package charts-repo/charts/app -d charts-repo/packages"
             }
         }
 
         stage('Upload to ChartMuseum') {
             steps {
-                script {
-                    sh """
-                        curl --user ${CHARTMUSEUM_CREDENTIALS_USR}:${CHARTMUSEUM_CREDENTIALS_PSW} \
-                        --data-binary @charts-repo/packages/webapp-0.1.0.tgz \
-                        ${CHART_REPO}/api/charts
-                    """
-                }
+                sh """
+                    curl --user ${CHARTMUSEUM_CREDENTIALS_USR}:${CHARTMUSEUM_CREDENTIALS_PSW} \
+                    --data-binary @charts-repo/packages/webapp-0.1.0.tgz \
+                    ${CHART_REPO}/api/charts
+                """
             }
         }
 
